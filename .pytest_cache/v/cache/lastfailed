@@ -1,1 +1,5 @@
-
+{
+  "tests/test_webui.py::test_system_endpoint_returns_real_metrics": true,
+  "tests/test_webui.py::test_weather_requires_lat_lon": true,
+  "tests/test_webui.py::test_weather_returns_real_tool_output": true
+}
