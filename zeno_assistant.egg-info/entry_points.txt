@@ -1,0 +1,3 @@
+[console_scripts]
+zeno = zeno.cli:main
+zeno-web = zeno.webui:main

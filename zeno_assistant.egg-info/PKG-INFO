@@ -1,0 +1,123 @@
+Metadata-Version: 2.4
+Name: zeno-assistant
+Version: 0.1.0
+Summary: ZENO — a local-first, honestly-documented personal intelligence agent skeleton.
+Author: ZENO Project
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.31
+Requires-Dist: psutil>=5.9
+Requires-Dist: reportlab>=4.0
+Requires-Dist: python-pptx>=0.6.23
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: pytest-cov>=5.0; extra == "dev"
+Provides-Extra: webui
+Requires-Dist: flask>=3.0; extra == "webui"
+Dynamic: license-file
+
+# ZENO
+
+*A local-first personal intelligence agent — built like it has to survive contact with an actual user, not just a demo.*
+
+![CI](https://github.com/YOUR_USERNAME/zeno/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+---
+
+## Why this README is written the way it is
+
+A previous assistant project of mine ("Nova") shipped with a README that described a lot more than the code actually did. It *behaved* like a normal assistant, but couldn't reliably do the specific tasks it was supposed to be built for — because the gap between "documented" and "implemented" was invisible until you hit it.
+
+ZENO is built to make that gap impossible to hide:
+
+- Every tool is registered with an explicit status — `implemented` or `stub` — in [`zeno/tools/registry.py`](zeno/tools/registry.py).
+- [`CAPABILITIES.md`](CAPABILITIES.md) is **generated from that live registry**, not hand-written. It cannot say a tool works if the code disagrees.
+- CI re-generates it on every push and **fails the build** if the committed file is stale (`scripts/gen_capabilities.py --check`).
+- A stub doesn't silently return a fake answer — calling one raises `NotImplementedError` on purpose.
+
+If you clone this repo, `CAPABILITIES.md` is the actual, current, provable truth about what ZENO can do today. Nothing in this README overrides it.
+
+## What ZENO is
+
+ZENO is the always-on, proactive assistant idea — the "JARVIS / Ultron" concept of a system that perceives, remembers, decides, and acts on your behalf — built as an honest, incrementally-real engineering project instead of a costume worn over an API call.
+
+**Core architecture:**
+
+| Component | File | What it does |
+|---|---|---|
+| 8-stage core loop | `zeno/core/loop.py` | perceive → contextualize → plan → permission-check → execute → reflect → update-goals → respond |
+| 7-layer memory | `zeno/memory/layers.py` | working, session (ephemeral) + episodic, semantic, procedural, reflective, identity (persisted in SQLite) |
+| Permission engine | `zeno/core/permissions.py` | allow / confirm / deny per tool — nothing destructive runs without explicit confirmation |
+| Goal engine | `zeno/core/goals.py` | priority-ordered standing goals, the seed of proactive behavior |
+| Event bus | `zeno/core/events.py` | every loop stage publishes an event; nothing needs to know who's listening |
+| Tool registry | `zeno/tools/registry.py` | the single source of truth for what's real |
+
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full design rationale and how this maps onto the Langflow multi-agent flow this project also uses.
+
+## Quickstart
+
+```bash
+git clone https://github.com/YOUR_USERNAME/zeno.git
+cd zeno
+pip install -e ".[dev]"
+pytest                     # 59 tests, all exercising real behavior
+python scripts/gen_capabilities.py   # regenerate CAPABILITIES.md
+zeno                       # launch the REPL
+```
+
+Inside the REPL:
+
+```
+zeno> tools
+zeno> note: pick up the CI badge URL once this repo is public
+zeno> system status
+zeno> delegate: search: current mars weather
+zeno> pending
+zeno> run pending
+```
+
+That last block is the "hand it off" pattern: `delegate:` queues something
+without running it yet, `pending` shows what's queued, `run pending` has
+ZENO actually attempt everything — using only tools that genuinely exist,
+and telling you plainly if something has no automatic path yet rather than
+faking a result. See [`ARCHITECTURE.md`](ARCHITECTURE.md#delegation--handle-it-for-me).
+
+## Current capabilities (short version)
+
+Real today: notes, reminders, projects (full CRUD, persisted), live weather lookup, DuckDuckGo instant-answer search, local system-status reporting with threshold alerting, morning-briefing assembly, idle check-in detection, PDF and PPTX generation. Routing is handled by a Supervisor (`zeno/core/supervisor.py`) that delegates to small per-domain rule-based sub-agents — same honest rule-based approach as the default planner, just structured so each domain is independently testable.
+
+Declared but not built yet: voice I/O, screen/vision, desktop device control, always-on ambient sensing. These are registered as stubs on purpose — see [`CAPABILITIES.md`](CAPABILITIES.md) for the full, current, generated table. Voice specifically needs real audio hardware to test against, which this development sandbox doesn't have; the interface is defined so a real implementation can be dropped in and verified on a machine that does.
+
+## The companion Langflow flow
+
+[`langflow/zeno_flow.json`](langflow/zeno_flow.json) is a multi-agent Orchestrator + 4-sub-agent flow (Comms & Tasks, Web & Research, Files/Docs & Code, Memory & Growth) for Langflow. It's a corrected version of an earlier export — see [`langflow/README.md`](langflow/README.md) for the specific bugs that were found (including all four sub-agents being indistinguishable to the Orchestrator at the tool-schema level) and fixed.
+
+## Known limitations
+
+- The default planner is a small rule-based keyword matcher, not an LLM. It is genuinely functional for the phrasings it recognizes and honestly unhelpful outside them — see `zeno/core/loop.py::default_rule_based_planner`. Swapping in an LLM-backed planner (e.g. via the companion Langflow flow) is the natural next step; the `PlannerFn` interface is built for that.
+- Reminder due-times are naive datetimes (no timezone normalization yet).
+- Memory retrieval is exact key lookup, not embedding/semantic search.
+- No voice, vision, or OS-level control — see the stub list above.
+
+## Roadmap
+
+- [x] Session ID plumbing for the companion Langflow flow's Message History memory
+- [x] Structured multi-domain routing (Supervisor pattern)
+- [ ] Timezone-aware reminders
+- [ ] LLM-backed planner (pluggable `PlannerFn`, wired to the Langflow orchestrator)
+- [ ] Scheduled/proactive runs — `proactive.check_idle` and `proactive.morning_briefing` exist as real functions; wiring them to an actual OS-level scheduler/timer loop is still open
+- [ ] Voice I/O (needs real audio hardware to implement and test against)
+- [ ] Desktop/device control
+- [ ] Vector-backed semantic memory search
+
+## Contributing
+
+Before adding a tool: register it with `status=ToolStatus.STUB` first if it isn't done, run `python scripts/gen_capabilities.py`, and commit the regenerated `CAPABILITIES.md` alongside your code. CI checks that the file matches the registry — it will fail your PR if it's out of sync.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
