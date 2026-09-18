@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+*.db
+build/
+dist/
+*.spec
+.ruff_cache/
+.DS_Store
+
+# Godseye companion app (godseye/) — Node project vendored as a subtree
+godseye/node_modules/
+godseye/.env
+godseye/dist/
