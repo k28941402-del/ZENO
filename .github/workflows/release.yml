@@ -1,0 +1,95 @@
+name: Release
+
+# Triggered by pushing a version tag, e.g.:
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# Builds a standalone double-click executable per OS with PyInstaller (no
+# Python install required to run it) and attaches all three to a GitHub
+# Release automatically. This is the "just download the artifact" path —
+# tests + lint (see ci.yml) already ran on every push to main, so a tag only
+# gets made from a commit that's already known to work.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_name: zeno-linux
+          - os: windows-latest
+            asset_name: zeno-windows.exe
+          - os: macos-latest
+            asset_name: zeno-macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package + PyInstaller
+        run: pip install -e ".[webui]" pyinstaller
+
+      - name: Run tests before packaging
+        run: |
+          pip install -e ".[dev]"
+          pytest -q
+
+      - name: Build standalone executable (Unix)
+        if: runner.os != 'Windows'
+        run: >
+          pyinstaller --onefile --name ZENO
+          --add-data "zeno/webui_static/index.html:zeno/webui_static"
+          --hidden-import zeno.tools --hidden-import zeno.core
+          zeno/launcher.py
+
+      - name: Build standalone executable (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          pyinstaller --onefile --name ZENO
+          --add-data "zeno/webui_static/index.html;zeno/webui_static"
+          --hidden-import zeno.tools --hidden-import zeno.core
+          zeno/launcher.py
+
+      - name: Rename artifact
+        shell: bash
+        run: |
+          mkdir -p out
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp dist/ZENO.exe "out/${{ matrix.asset_name }}"
+          else
+            cp dist/ZENO "out/${{ matrix.asset_name }}"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: out/${{ matrix.asset_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifact directories
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec cp {} release/ \;
+          ls -la release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
