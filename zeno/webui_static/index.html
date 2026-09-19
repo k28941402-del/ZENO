@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ZENO</title>
+<style>
+  :root {
+    --bg-0: #05060d;
+    --bg-1: #0b0e1c;
+    --panel: rgba(18, 22, 46, 0.55);
+    --panel-border: rgba(130, 150, 255, 0.28);
+    --panel-border-strong: rgba(140, 160, 255, 0.5);
+    --cyan: #4fd8ff;
+    --purple: #9b7bff;
+    --text: #eef1ff;
+    --muted: #8b93b8;
+    --muted-2: #5e6690;
+    --success: #4ee08a;
+    --warning: #ffb84d;
+    --danger: #ff6b7a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background:
+      radial-gradient(ellipse 900px 500px at 15% 100%, rgba(255,140,90,0.06), transparent 60%),
+      radial-gradient(ellipse 1000px 700px at 85% 10%, rgba(120,90,255,0.10), transparent 60%),
+      radial-gradient(ellipse 1400px 900px at 50% 50%, var(--bg-1), var(--bg-0));
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+    overflow: hidden;
+  }
+  .mono { font-variant-numeric: tabular-nums; }
+
+  .glass {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    backdrop-filter: blur(14px);
+    box-shadow: 0 0 24px rgba(90, 110, 255, 0.08), inset 0 0 0 1px rgba(255,255,255,0.02);
+  }
+
+  #app { display: grid; grid-template-columns: 82px 1fr; height: 100%; }
+
+  /* ---------- sidebar ---------- */
+  #sidebar {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 20px 0; border-right: 1px solid var(--panel-border);
+    background: rgba(8, 10, 22, 0.6);
+  }
+  #brand { width: 34px; height: 34px; margin-bottom: 30px; }
+  .nav-item {
+    width: 46px; height: 46px; border-radius: 12px; display: flex;
+    align-items: center; justify-content: center; margin-bottom: 10px;
+    color: var(--muted); cursor: pointer; position: relative;
+  }
+  .nav-item svg { width: 20px; height: 20px; }
+  .nav-item:hover { color: var(--text); background: rgba(120,150,255,0.08); }
+  .nav-item.active { color: var(--cyan); background: rgba(79,216,255,0.12); box-shadow: inset 0 0 0 1px rgba(79,216,255,0.35); }
+
+  /* ---------- top bar ---------- */
+  #main { display: flex; flex-direction: column; min-height: 0; }
+  #topbar {
+    display: flex; align-items: center; gap: 18px;
+    padding: 16px 26px; border-bottom: 1px solid var(--panel-border);
+    flex-shrink: 0;
+  }
+  #wordmark { font-weight: 700; letter-spacing: 0.18em; font-size: 16px; }
+  #tagline { color: var(--muted); font-size: 11px; letter-spacing: 0.08em; }
+  #clock { font-size: 13px; color: var(--muted); }
+  #clock .time { color: var(--text); font-weight: 600; margin-right: 8px; }
+  .spacer { flex: 1; }
+  #conn { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); }
+  .pulse-dot.off { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+
+  /* ---------- home view layout ---------- */
+  #home { flex: 1; display: grid; grid-template-columns: 300px 1fr 320px; gap: 18px; padding: 22px 26px; min-height: 0; overflow: hidden; }
+  .col { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; padding-right: 2px; }
+
+  .card { padding: 16px 18px; }
+  .card h3 { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.02em; display: flex; align-items: center; gap: 6px; }
+  .card h3 svg { width: 13px; height: 13px; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
+  .row:last-child { border-bottom: none; }
+  .row .label { color: var(--text); }
+  .row .sub { color: var(--muted-2); font-size: 11px; }
+  .empty { color: var(--muted-2); font-size: 12.5px; font-style: italic; padding: 6px 0; }
+
+  .bar-track { height: 5px; border-radius: 3px; background: rgba(255,255,255,0.07); overflow: hidden; margin-top: 4px; }
+  .bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--purple), var(--cyan)); }
+  .bar-fill.warn { background: linear-gradient(90deg, var(--warning), var(--danger)); }
+  .stat-row { padding: 8px 0; }
+  .stat-row .top { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 2px; }
+
+  /* ---------- godseye stub panel ---------- */
+  #godseye-body { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 18px 10px; color: var(--muted); gap: 8px; }
+  #godseye-body svg { width: 30px; height: 30px; opacity: 0.5; }
+  #godseye-body .status-pill {
+    font-size: 10.5px; letter-spacing: 0.04em; padding: 2px 10px; border-radius: 20px;
+    border: 1px solid var(--panel-border); color: var(--muted-2);
+  }
+
+  /* ---------- center hero ---------- */
+  #hero { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; position: relative; }
+  #orb-wrap { width: 220px; height: 220px; position: relative; display: flex; align-items: center; justify-content: center; }
+  #orb-glow {
+    position: absolute; width: 100%; height: 100%; border-radius: 50%;
+    background: radial-gradient(circle, rgba(155,123,255,0.55), rgba(79,216,255,0.15) 60%, transparent 72%);
+    filter: blur(6px);
+  }
+  #orb-ring {
+    position: absolute; width: 72%; height: 72%; border-radius: 50%;
+    border: 1.5px solid rgba(150,170,255,0.5);
+    animation: spin 14s linear infinite;
+  }
+  #orb-ring::before {
+    content: ""; position: absolute; inset: -1px; border-radius: 50%;
+    border: 1px solid transparent; border-top-color: var(--cyan); border-right-color: var(--purple);
+  }
+  #orb-core {
+    width: 48%; height: 48%; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #cdb9ff, #6f56d6 55%, #241a4d);
+    box-shadow: 0 0 40px rgba(155,123,255,0.6);
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #greeting { font-size: 15px; color: var(--muted); text-align: center; }
+  #greeting b { color: var(--text); }
+
+  #composer-wrap { width: 560px; max-width: 80vw; }
+  #composer {
+    display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 18px;
+    border-radius: 30px;
+  }
+  #mic-btn {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, var(--purple), var(--cyan)); border: none;
+  }
+  #mic-btn svg { width: 16px; height: 16px; color: #0b0e1c; }
+  #composer input {
+    flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-size: 14px; font-family: inherit;
+  }
+  #composer input::placeholder { color: var(--muted-2); }
+  #composer button.send { background: none; border: none; color: var(--cyan); cursor: pointer; padding: 4px; }
+  #composer button.send svg { width: 18px; height: 18px; }
+  #hint { font-size: 11px; color: var(--muted-2); }
+
+  /* ---------- quick actions ---------- */
+  #quick-actions { display: flex; gap: 12px; }
+  .qa-btn {
+    width: 78px; padding: 12px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    cursor: pointer; font-size: 11px; color: var(--muted);
+  }
+  .qa-btn:hover { color: var(--text); border-color: var(--panel-border-strong); }
+  .qa-btn svg { width: 18px; height: 18px; color: var(--cyan); }
+
+  /* ---------- alt views (tools / projects / delegation / settings) ---------- */
+  .alt-view { flex: 1; padding: 22px 26px; overflow-y: auto; display: none; }
+  .alt-view.visible { display: block; }
+  .alt-view h2 { font-size: 14px; color: var(--muted); font-weight: 600; margin: 0 0 14px; }
+  .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .tool-card { padding: 12px 14px; }
+  .tool-card .name { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .tool-card .desc { font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .tool-card.implemented .name { color: var(--cyan); }
+  .tool-card.stub .name { color: var(--muted-2); }
+  .badge { font-size: 9.5px; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 10px; margin-left: 6px; vertical-align: middle; }
+  .badge.implemented { background: rgba(79,216,255,0.15); color: var(--cyan); }
+  .badge.stub { background: rgba(140,150,180,0.12); color: var(--muted-2); }
+
+  .goal-item { padding: 12px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .goal-item .desc { font-size: 13px; }
+  .goal-item .status { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  #delegate-form-full { display: flex; gap: 8px; margin-bottom: 16px; }
+  #delegate-form-full input { flex: 1; background: rgba(255,255,255,0.04); border: 1px solid var(--panel-border); border-radius: 8px; padding: 9px 12px; color: var(--text); font-family: inherit; font-size: 13px; }
+  .btn { background: linear-gradient(135deg, var(--purple), var(--cyan)); border: none; color: #0b0e1c; font-weight: 600; padding: 9px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: rgba(140,150,200,0.25); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <nav id="sidebar">
+    <svg id="brand" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="url(#g1)" stroke-width="2"/><defs><linearGradient id="g1" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#9b7bff"/><stop offset="1" stop-color="#4fd8ff"/></linearGradient></defs></svg>
+    <div class="nav-item active" data-view="home" title="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg></div>
+    <div class="nav-item" data-view="godseye-full" title="Godseye"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
+    <div class="nav-item" data-view="projects" title="Projects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+    <div class="nav-item" data-view="delegation" title="Delegation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+    <div class="nav-item" data-view="tools" title="Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 1 1-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 1 1 5.4-5.4z"/></svg></div>
+    <div class="nav-item" data-view="settings" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+  </nav>
+
+  <div id="main">
+    <header id="topbar">
+      <div>
+        <div id="wordmark">Z E N O</div>
+        <div id="tagline">THINK · PLAN · DO</div>
+      </div>
+      <div id="clock"><span class="time mono" id="clock-time">--:--</span><span id="clock-date">—</span></div>
+      <div class="spacer"></div>
+      <div id="conn"><span class="pulse-dot" id="conn-dot"></span><span id="conn-text">Connecting…</span></div>
+    </header>
+
+    <section id="home">
+      <div class="col">
+        <div class="glass card">
+          <h3 id="greeting-title">Good day.</h3>
+          <div class="row"><span class="label">Due reminders</span><span class="sub mono" id="count-reminders">–</span></div>
+          <div class="row"><span class="label">Notes on file</span><span class="sub mono" id="count-notes">–</span></div>
+          <div class="row"><span class="label">Queued for ZENO</span><span class="sub mono" id="count-pending">–</span></div>
+        </div>
+
+        <div class="glass card">
+          <h3>Weather</h3>
+          <div id="weather-body">
+            <div class="empty">Add coordinates to enable — nothing is guessed.</div>
+            <div id="weather-form" style="display:flex; gap:6px; margin-top:8px;">
+              <input id="wx-lat" placeholder="lat" style="width:64px; background:rgba(255,255,255,0.04); border:1px solid var(--panel-border); border-radius:6px; color:var(--text); padding:5px 7px; font-size:12px;">
+              <input id="wx-lon" placeholder="lon" style="width:64px; background:rgba(255,255,255,0.04); border:1px solid var(--panel-border); border-radius:6px; color:var(--text); padding:5px 7px; font-size:12px;">
+              <button class="btn" id="wx-submit" style="padding:5px 10px; font-size:12px;">Set</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass card" id="godseye-card">
+          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>Godseye</h3>
+          <div id="godseye-body">
+            <svg id="godseye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/><line x1="3" y1="3" x2="21" y2="21"/></svg>
+            <div id="godseye-text">Checking for the companion app…</div>
+            <div class="status-pill" id="godseye-pill">checking…</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="hero">
+        <div id="orb-wrap">
+          <div id="orb-glow"></div>
+          <div id="orb-ring"></div>
+          <div id="orb-core"></div>
+        </div>
+        <div id="greeting">Hey — <b id="greeting-name">how can I help</b>?</div>
+        <div id="composer-wrap" class="glass">
+          <form id="composer">
+            <button type="button" id="mic-btn" title="Voice input"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3" stroke="currentColor" stroke-width="1.8" fill="none"/></svg></button>
+            <input id="composer-input" type="text" autocomplete="off" placeholder="Ask ZENO anything…" />
+            <button type="submit" class="send" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button>
+          </form>
+        </div>
+        <div id="hint">Type a command, or try <em>delegate: search: current mars weather</em></div>
+        <div id="quick-actions">
+          <div class="glass qa-btn" data-action="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>New note</div>
+          <div class="glass qa-btn" data-action="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>Web search</div>
+          <div class="glass qa-btn" data-action="run-pending"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3v18l15-9z"/></svg>Run pending</div>
+          <div class="glass qa-btn" data-action="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Refresh</div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="glass card">
+          <h3>Upcoming</h3>
+          <div id="upcoming-list"><div class="empty">Nothing due right now.</div></div>
+        </div>
+
+        <div class="glass card">
+          <h3>System status</h3>
+          <div id="system-body"></div>
+        </div>
+
+        <div class="glass card">
+          <h3>Recent activity</h3>
+          <div id="activity-list"><div class="empty">Nothing yet — say something.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="alt-view" id="view-tools"><h2>Tool registry</h2><div class="tool-grid" id="tools-grid"></div></section>
+    <section class="alt-view" id="view-projects"><h2>Projects</h2><div id="projects-list"></div></section>
+    <section class="alt-view" id="view-delegation">
+      <h2>Delegation queue</h2>
+      <form id="delegate-form-full"><input id="delegate-input-full" placeholder="Hand something off to ZENO…" /><button class="btn" type="submit">Queue</button></form>
+      <button class="btn" id="run-pending-full" style="margin-bottom:16px;">Run all pending</button>
+      <div id="goals-list-full"></div>
+    </section>
+    <section class="alt-view" id="view-godseye-full">
+      <h2>Godseye — companion app</h2>
+      <div id="godseye-full-body"></div>
+    </section>
+    <section class="alt-view" id="view-settings">
+      <h2>About this build</h2>
+      <div class="glass card" style="max-width:480px;">
+        <div class="row"><span class="label">Implemented tools</span><span class="sub mono" id="settings-impl">–</span></div>
+        <div class="row"><span class="label">Stubbed tools</span><span class="sub mono" id="settings-stub">–</span></div>
+        <div class="row"><span class="label">Docs</span><span class="sub">CAPABILITIES.md / ARCHITECTURE.md</span></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+async function api(path, opts) {
+  const res = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts || {}));
+  return res.json();
+}
+
+// ---- clock ----
+function tickClock() {
+  const now = new Date();
+  $('#clock-time').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  $('#clock-date').textContent = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  const h = now.getHours();
+  const part = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
+  $('#greeting-title').textContent = 'Good ' + part + '.';
+}
+setInterval(tickClock, 1000); tickClock();
+
+// ---- view switching ----
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+    const view = item.dataset.view;
+    $('#home').style.display = view === 'home' ? 'grid' : 'none';
+    document.querySelectorAll('.alt-view').forEach(v => v.classList.remove('visible'));
+    if (view !== 'home') $('#view-' + view).classList.add('visible');
+    if (view === 'tools') refreshTools();
+    if (view === 'projects') refreshProjects();
+    if (view === 'delegation') refreshGoalsFull();
+    if (view === 'settings') refreshStatus();
+    if (view === 'godseye-full') refreshGodseye();
+  });
+});
+
+// ---- connection + overview polling ----
+async function refreshStatus() {
+  try {
+    const s = await api('/api/status');
+    $('#conn-dot').classList.remove('off');
+    $('#conn-text').textContent = s.implemented + ' real tools · ' + s.stub + ' stub';
+    $('#settings-impl').textContent = s.implemented;
+    $('#settings-stub').textContent = s.stub;
+    $('#count-pending').textContent = s.pending_goals;
+  } catch (e) {
+    $('#conn-dot').classList.add('off');
+    $('#conn-text').textContent = 'Offline';
+  }
+}
+
+function timeAgo(iso) {
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (secs < 60) return secs + 's ago';
+  if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+  return Math.floor(secs / 3600) + 'h ago';
+}
+
+async function refreshOverview() {
+  const o = await api('/api/overview');
+
+  $('#count-reminders').textContent = o.due_reminders.length;
+  $('#count-notes').textContent = o.notes.length;
+
+  const up = $('#upcoming-list');
+  up.innerHTML = o.due_reminders.length ? '' : '<div class="empty">Nothing due right now.</div>';
+  for (const r of o.due_reminders) {
+    up.innerHTML += '<div class="row"><span class="label">' + r.text + '</span><span class="sub">' + r.due + '</span></div>';
+  }
+
+  const sys = $('#system-body');
+  const bars = [
+    ['CPU', o.system.cpu_percent], ['Memory', o.system.memory_percent], ['Disk', o.system.disk_percent]
+  ];
+  sys.innerHTML = '';
+  for (const [label, val] of bars) {
+    if (val === undefined) continue;
+    const warn = val >= 90;
+    sys.innerHTML += '<div class="stat-row"><div class="top"><span>' + label + '</span><span class="mono">' + val + '%</span></div>' +
+      '<div class="bar-track"><div class="bar-fill' + (warn ? ' warn' : '') + '" style="width:' + val + '%"></div></div></div>';
+  }
+}
+
+async function refreshHistory() {
+  const items = await api('/api/history?limit=6');
+  const el = $('#activity-list');
+  el.innerHTML = items.length ? '' : '<div class="empty">Nothing yet — say something.</div>';
+  for (const it of items) {
+    const summary = it.error ? it.error : (it.tool ? it.tool : 'no tool matched');
+    el.innerHTML += '<div class="row"><span class="label">' + it.input + '</span><span class="sub">' + summary + '</span></div>';
+  }
+}
+
+async function refreshGodseye() {
+  let data;
+  try {
+    data = await api('/api/godseye/status');
+  } catch (e) {
+    data = { connected: false, url: 'http://127.0.0.1:4173/' };
+  }
+
+  const pill = $('#godseye-pill');
+  const text = $('#godseye-text');
+  if (data.connected) {
+    pill.textContent = 'connected';
+    pill.style.color = 'var(--success)';
+    pill.style.borderColor = 'var(--success)';
+    text.innerHTML = 'Live globe running — <a href="' + data.url + '" target="_blank" style="color:var(--cyan);">open Godseye ↗</a>';
+  } else {
+    pill.textContent = 'not running';
+    text.textContent = "Companion app isn't running right now.";
+  }
+
+  const full = $('#godseye-full-body');
+  if (data.connected) {
+    full.innerHTML = '<div class="glass card" style="padding:0; height:70vh; overflow:hidden;">' +
+      '<iframe src="' + data.url + '" style="width:100%; height:100%; border:none; border-radius:14px;"></iframe></div>';
+  } else {
+    full.innerHTML = '<div class="glass card" style="max-width:560px;">' +
+      '<div style="margin-bottom:10px;">Godseye (live 3D globe: flights, ships, satellites, earthquakes, CCTV) is vendored in this repo under <code>godseye/</code> but isn\'t running. Start it separately:</div>' +
+      '<pre style="background:rgba(0,0,0,0.3); padding:12px; border-radius:8px; font-size:12px; overflow-x:auto;">cd godseye\ncp .env.example .env   # set GOOGLE_MAPS_API_KEY\nnpm install\nnpm run dev</pre>' +
+      '<div style="font-size:12px; color:var(--muted);">Then reopen this tab — most data layers need zero extra API keys. See <code>godseye/INTEGRATION.md</code>.</div></div>';
+  }
+}
+
+// ---- tools / projects / delegation full views ----
+async function refreshTools() {
+  const tools = await api('/api/tools');
+  const grid = $('#tools-grid');
+  grid.innerHTML = '';
+  for (const t of tools) {
+    grid.innerHTML += '<div class="glass tool-card ' + t.status + '"><div class="name">' + t.name +
+      '<span class="badge ' + t.status + '">' + t.status + '</span></div><div class="desc">' + t.description + '</div></div>';
+  }
+}
+
+async function refreshProjects() {
+  const o = await api('/api/overview');
+  const el = $('#projects-list');
+  el.innerHTML = o.projects.length ? '' : '<div class="empty">No projects yet. Try: new project: &lt;name&gt;</div>';
+  for (const p of o.projects) {
+    el.innerHTML += '<div class="glass goal-item"><span class="desc">' + p.name + '</span><span class="status">' + p.status + '</span></div>';
+  }
+}
+
+async function refreshGoalsFull() {
+  const goals = await api('/api/goals');
+  const el = $('#goals-list-full');
+  el.innerHTML = goals.length ? '' : '<div class="empty">Nothing queued.</div>';
+  for (const g of goals.slice().reverse()) {
+    el.innerHTML += '<div class="glass goal-item"><span class="desc">#' + g.id + ' ' + g.description + '</span><span class="status">' + g.status + '</span></div>';
+  }
+}
+
+// ---- composer ----
+async function sendTurn(text) {
+  const result = await api('/api/turn', { method: 'POST', body: JSON.stringify({ text }) });
+  refreshStatus(); refreshOverview(); refreshHistory();
+  return result;
+}
+
+$('#composer').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = $('#composer-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  await sendTurn(text);
+});
+
+$('#mic-btn').addEventListener('click', () => {
+  $('#hint').textContent = "Voice input isn't available in this build yet — it's an honest stub (voice.listen). Type instead.";
+});
+
+// ---- quick actions ----
+document.querySelectorAll('.qa-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const action = btn.dataset.action;
+    if (action === 'note') {
+      const text = prompt('Note title:');
+      if (text) await sendTurn('note: ' + text);
+    } else if (action === 'search') {
+      const q = prompt('Search for:');
+      if (q) await sendTurn('search: ' + q);
+    } else if (action === 'run-pending') {
+      await api('/api/run_pending', { method: 'POST' });
+      refreshStatus(); refreshOverview(); refreshGoalsFull();
+    } else if (action === 'status') {
+      refreshStatus(); refreshOverview(); refreshHistory();
+    }
+  });
+});
+
+// ---- delegation (full view) ----
+$('#delegate-form-full').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = $('#delegate-input-full');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  await api('/api/delegate', { method: 'POST', body: JSON.stringify({ text }) });
+  refreshGoalsFull(); refreshStatus();
+});
+$('#run-pending-full').addEventListener('click', async () => {
+  await api('/api/run_pending', { method: 'POST' });
+  refreshGoalsFull(); refreshStatus(); refreshOverview();
+});
+
+// ---- weather (opt-in, no fake default location) ----
+$('#wx-submit').addEventListener('click', async () => {
+  const lat = parseFloat($('#wx-lat').value), lon = parseFloat($('#wx-lon').value);
+  if (isNaN(lat) || isNaN(lon)) return;
+  localStorage.setItem('zeno_lat', lat); localStorage.setItem('zeno_lon', lon);
+  await loadWeather(lat, lon);
+});
+async function loadWeather(lat, lon) {
+  const body = $('#weather-body');
+  body.innerHTML = '<div class="empty">Fetching…</div>';
+  try {
+    const w = await api('/api/weather', { method: 'POST', body: JSON.stringify({ latitude: lat, longitude: lon }) });
+    if (w.error) { body.innerHTML = '<div class="empty">' + w.error + '</div>'; return; }
+    body.innerHTML = '<div class="row"><span class="label">Temperature</span><span class="sub mono">' + w.temperature_c + '°C</span></div>' +
+      '<div class="row"><span class="label">Wind</span><span class="sub mono">' + w.windspeed_kmh + ' km/h</span></div>';
+  } catch (e) {
+    body.innerHTML = '<div class="empty">Could not reach weather service.</div>';
+  }
+}
+(function initWeather() {
+  const lat = localStorage.getItem('zeno_lat'), lon = localStorage.getItem('zeno_lon');
+  if (lat && lon) loadWeather(parseFloat(lat), parseFloat(lon));
+})();
+
+// ---- boot ----
+refreshStatus();
+refreshOverview();
+refreshHistory();
+refreshGodseye();
+setInterval(() => { refreshStatus(); refreshOverview(); refreshGodseye(); }, 5000);
+</script>
+</body>
+</html>
