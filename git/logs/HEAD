@@ -1,1 +1,5 @@
-
+0000000000000000000000000000000000000000 616068961fbe32666c5a233060763d86dfb3129d ZENO Project <zeno@example.com> 1789558537 +0000	commit (initial): Initial commit: ZENO core loop, memory, permissions, goals, tools, tests, CI
+616068961fbe32666c5a233060763d86dfb3129d b526e3e630d7fda1bf7b53fbc81041e5420c47f0 ZENO Project <zeno@example.com> 1789644586 +0000	commit: Add Supervisor routing, proactive layer, web search, system alerts; fix and document Langflow flow bugs
+b526e3e630d7fda1bf7b53fbc81041e5420c47f0 6d0207cc76392e03e898dcdbaf22ee901383eda4 ZENO Project <zeno@example.com> 1789698243 +0000	commit: Add Delegator: JARVIS-style task offloading built on the existing GoalEngine/Supervisor/PermissionEngine
+6d0207cc76392e03e898dcdbaf22ee901383eda4 a8f8ef030950d8c6af711234e7c18b667feceac0 ZENO Project <zeno@example.com> 1789699451 +0000	commit: Add web console UI (Flask + vanilla JS) and release workflow building standalone downloadable executables
+a8f8ef030950d8c6af711234e7c18b667feceac0 f9b3a9006168ad6f6b982a7972e46041745a61d4 ZENO Project <zeno@example.com> 1789727957 +0000	commit: Redesign web console to holographic dashboard; vendor and integrate Godseye (gods-eye-view) with real reachability detection
