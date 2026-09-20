@@ -1,94 +1,50 @@
-name: Release
+name: Windows installer
 
+# Runs on version tags (v0.1.1, ...) and from the Actions tab's "Run workflow"
+# button. Manual runs get an automatic build-YYYYMMDD-HHMMSS tag, so there is
+# always a tag to attach the installer to (same approach as Nova's workflow).
 on:
   push:
-    tags:
-      - "v*"
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Release tag, for example v0.1.0"
-        required: true
-        type: string
-
-permissions:
-  contents: write
+    tags: ["v*"]
+  workflow_dispatch: {}
 
 jobs:
   build:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            asset_name: zeno-linux
-          - os: windows-latest
-            asset_name: zeno-windows.exe
-          - os: macos-latest
-            asset_name: zeno-macos
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
-      - name: Install package + PyInstaller
-        run: pip install -e ".[webui]" pyinstaller
-
-      - name: Run tests before packaging
+      - name: Install dependencies
         run: |
-          pip install -e ".[dev]"
-          pytest -q
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller pywebview
 
-      - name: Build standalone executable (Unix)
-        if: runner.os != 'Windows'
-        run: >
-          pyinstaller --onefile --name ZENO
-          --add-data "zeno/webui_static/index.html:zeno/webui_static"
-          --hidden-import zeno.tools --hidden-import zeno.core
-          zeno/launcher.py
+      - name: Build the app with PyInstaller
+        run: pyinstaller zeno.spec --noconfirm
 
-      - name: Build standalone executable (Windows)
-        if: runner.os == 'Windows'
-        run: >
-          pyinstaller --onefile --name ZENO
-          --add-data "zeno/webui_static/index.html;zeno/webui_static"
-          --hidden-import zeno.tools --hidden-import zeno.core
-          zeno/launcher.py
+      - name: Install Inno Setup
+        run: choco install innosetup -y
 
-      - name: Rename artifact
-        shell: bash
+      - name: Build ZENO-Setup.exe
+        shell: pwsh
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" zeno_installer.iss'
+
+      - name: Publish to a GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p out
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp dist/ZENO.exe "out/${{ matrix.asset_name }}"
-          else
-            cp dist/ZENO "out/${{ matrix.asset_name }}"
-          fi
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset_name }}
-          path: out/${{ matrix.asset_name }}
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Flatten artifact directories
-        run: |
-          mkdir -p release
-          find artifacts -type f -exec cp {} release/ \;
-          ls -la release
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release/*
-          generate_release_notes: true
-          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          if ($env:GITHUB_REF -like "refs/tags/*") { $tag = $env:GITHUB_REF_NAME }
+          else { $tag = "build-$(Get-Date -Format 'yyyyMMdd-HHmmss')" }
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag "installer_output/ZENO-Setup.exe" --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $tag "installer_output/ZENO-Setup.exe" --title "ZENO $tag" --notes "Build from commit $env:GITHUB_SHA" --repo $env:GITHUB_REPOSITORY
+          }
