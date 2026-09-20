@@ -1,24 +1,24 @@
 from zeno.core.permissions import Decision, PermissionEngine
 
 
-def test_default_confirm_requires_confirmation():
-    engine = PermissionEngine()
-    assert engine.check("some.tool", confirmed=False) is False
-    assert engine.check("some.tool", confirmed=True) is True
+def test_confirm_requires_explicit_true() -> None:
+    engine = PermissionEngine(default=Decision.CONFIRM)
+
+    assert engine.check("notes.create") is False
+    assert engine.check("notes.create", confirmed=True) is True
 
 
-def test_explicit_allow_never_needs_confirmation():
-    engine = PermissionEngine()
-    engine.set_rule("safe.tool", Decision.ALLOW)
-    assert engine.check("safe.tool", confirmed=False) is True
-
-
-def test_explicit_deny_always_blocks():
-    engine = PermissionEngine()
-    engine.set_rule("dangerous.tool", Decision.DENY)
-    assert engine.check("dangerous.tool", confirmed=True) is False
-
-
-def test_default_can_be_overridden_to_allow():
+def test_deny_rule_is_never_auto_overridden() -> None:
     engine = PermissionEngine(default=Decision.ALLOW)
-    assert engine.check("anything", confirmed=False) is True
+    engine.set_rule("device.control", Decision.DENY)
+
+    assert engine.check("device.control") is False
+    assert engine.check("device.control", confirmed=True) is False
+
+
+def test_specific_rule_takes_precedence_over_default() -> None:
+    engine = PermissionEngine(default=Decision.ALLOW)
+    engine.set_rule("notes.create", Decision.CONFIRM)
+
+    assert engine.check("notes.create") is False
+    assert engine.check("notes.create", confirmed=True) is True

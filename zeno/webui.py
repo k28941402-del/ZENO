@@ -1,4 +1,4 @@
-"""ZENO web UI.
+"""ZENO Web UI.
 
 This module exposes the same CoreLoop / Supervisor / Delegator objects used by
 `zeno/cli.py` over HTTP, without any separate demo-only code path.
