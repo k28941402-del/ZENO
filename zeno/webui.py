@@ -26,8 +26,6 @@ from .memory.store import SQLiteStore
 from .tools import build_default_registry
 
 if getattr(sys, "frozen", False):
-    # PyInstaller onefile build: data files were extracted under sys._MEIPASS,
-    # preserving the "zeno/webui_static" relative path given to --add-data.
     _STATIC_DIR = Path(sys._MEIPASS) / "zeno" / "webui_static"  # type: ignore[attr-defined]
 else:
     _STATIC_DIR = Path(__file__).resolve().parent / "webui_static"
@@ -53,20 +51,20 @@ def _serialize_turn_result(result) -> dict[str, Any]:
 
 
 def _safe_call(registry, tool_name: str, **kwargs: Any) -> Any:
-    """Call a tool and return None on failure instead of blowing up a whole
-    dashboard refresh because one panel's data source hiccuped."""
+    """Return ``None`` for a degraded dashboard panel, never fake its data."""
     try:
         return registry.call(tool_name, **kwargs)
-    except Exception:  # noqa: BLE001 — degraded panel, not a crashed page
+    except Exception:  # noqa: BLE001 — one unavailable panel must not crash refresh
         return None
 
 
 def create_app(db_path: str = "zeno_memory.db") -> Flask:
-    """`db_path` defaults to a persistent file so notes/reminders/goals
-    survive restarting the server — that's the desired behavior for real
-    use. Pass ":memory:" (or a unique tmp_path) to isolate state, which is
-    exactly what the test suite does so test cases don't leak into each
-    other via a shared file on disk."""
+    """Create the app with persistent-by-default, configurable memory.
+
+    HTTP callers must explicitly send ``{"confirmed": true}`` for tools whose
+    permission policy is CONFIRM. Delegating or submitting a turn alone never
+    grants that confirmation.
+    """
     app = Flask(__name__, static_folder=None)
 
     memory = MemoryManager(SQLiteStore(db_path))
@@ -83,22 +81,11 @@ def create_app(db_path: str = "zeno_memory.db") -> Flask:
     @app.get("/api/status")
     def status():
         pending = sum(1 for g in delegator.goals.all() if g.status is GoalStatus.PENDING)
-        return jsonify(
-            {
-                "implemented": registry.implemented_count(),
-                "stub": registry.stub_count(),
-                "pending_goals": pending,
-            }
-        )
+        return jsonify({"implemented": registry.implemented_count(), "stub": registry.stub_count(), "pending_goals": pending})
 
     @app.get("/api/tools")
     def tools():
-        return jsonify(
-            [
-                {"name": t.name, "status": t.status.value, "description": t.description}
-                for t in registry.list_tools()
-            ]
-        )
+        return jsonify([{"name": t.name, "status": t.status.value, "description": t.description} for t in registry.list_tools()])
 
     @app.post("/api/turn")
     def turn():
@@ -106,7 +93,7 @@ def create_app(db_path: str = "zeno_memory.db") -> Flask:
         text = (data.get("text") or "").strip()
         if not text:
             return jsonify({"error": "text is required"}), 400
-        result = loop.run_turn(text, confirmed=True)
+        result = loop.run_turn(text, confirmed=data.get("confirmed") is True)
         return jsonify(_serialize_turn_result(result))
 
     @app.get("/api/goals")
@@ -119,81 +106,63 @@ def create_app(db_path: str = "zeno_memory.db") -> Flask:
         text = (data.get("text") or "").strip()
         if not text:
             return jsonify({"error": "text is required"}), 400
-        priority = int(data.get("priority", 0))
-        goal = delegator.delegate(text, priority=priority)
-        return jsonify(_serialize_goal(goal))
+        try:
+            priority = int(data.get("priority", 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "priority must be an integer"}), 400
+        return jsonify(_serialize_goal(delegator.delegate(text, priority=priority)))
 
     @app.post("/api/run_pending")
     def run_pending():
-        results = delegator.run_all_pending(confirmed=True)
-        return jsonify(
-            [
-                {
-                    "goal": _serialize_goal(r.goal),
-                    "handled": r.handled,
-                    "output": r.output,
-                    "note": r.note,
-                }
-                for r in results
-            ]
-        )
+        data = request.get_json(force=True, silent=True) or {}
+        results = delegator.run_all_pending(confirmed=data.get("confirmed") is True)
+        return jsonify([{"goal": _serialize_goal(r.goal), "handled": r.handled, "output": r.output, "note": r.note} for r in results])
 
     @app.get("/api/overview")
     def overview():
-        """Everything the dashboard's side panels need, in one call — all of
-        it real: live system stats, real due reminders, real notes/projects.
-        No calendar/meetings data is included because ZENO has no calendar
-        tool in this codebase (that integration lives in the companion
-        Langflow flow's Comms & Tasks agent, not here)."""
         system = _safe_call(registry, "system.status") or {}
         alerts = _safe_call(registry, "system.check_thresholds", status=system) if system else []
-        return jsonify(
-            {
-                "system": system,
-                "alerts": alerts or [],
-                "due_reminders": _safe_call(registry, "reminders.list_due") or [],
-                "notes": _safe_call(registry, "notes.list") or [],
-                "projects": _safe_call(registry, "projects.list") or [],
-            }
-        )
+        return jsonify({
+            "system": system,
+            "alerts": alerts or [],
+            "due_reminders": _safe_call(registry, "reminders.list_due") or [],
+            "notes": _safe_call(registry, "notes.list") or [],
+            "projects": _safe_call(registry, "projects.list") or [],
+        })
 
     @app.get("/api/history")
     def history():
-        """Recent turns from episodic memory — real conversation history,
-        not a synthetic activity feed."""
-        limit = int(request.args.get("limit", 8))
-        entries = memory.all_in("episodic")
-        # keys are "turn:<n>" in insertion order; take the most recent N.
-        items = list(entries.values())[-limit:]
+        limit = max(0, min(int(request.args.get("limit", 8)), 100))
+        items = list(memory.all_in("episodic").values())[-limit:]
         return jsonify(list(reversed(items)))
 
     @app.post("/api/weather")
     def weather():
-        """Real weather via the weather.current tool. Requires the caller
-        to supply coordinates — there is no default location, because
-        guessing one would mean showing weather for a place the user never
-        specified."""
         data = request.get_json(force=True, silent=True) or {}
         lat, lon = data.get("latitude"), data.get("longitude")
         if lat is None or lon is None:
             return jsonify({"error": "latitude and longitude are required"}), 400
         try:
             return jsonify(registry.call("weather.current", latitude=float(lat), longitude=float(lon)))
-        except Exception as exc:  # noqa: BLE001 — reported honestly, not swallowed
+        except (TypeError, ValueError) as exc:
+            return jsonify({"error": f"invalid coordinates: {exc}"}), 400
+        except Exception as exc:  # noqa: BLE001 — reported honestly
             return jsonify({"error": str(exc)}), 502
 
     @app.get("/api/godseye/status")
     def godseye_status():
-        """Real reachability check against the vendored Godseye companion
-        app (see godseye/INTEGRATION.md) — not a hardcoded 'connected'. If
-        nothing is listening on its default port, this honestly says so."""
         url = "http://127.0.0.1:4173/"
         try:
             resp = http_requests.get(url, timeout=0.6)
             connected = resp.status_code < 500
-        except Exception:  # noqa: BLE001 — "not running" is a normal outcome, not an error
+        except Exception:  # noqa: BLE001 — not running is normal
             connected = False
-        return jsonify({"connected": connected, "url": url})
+        return jsonify({
+            "connected": connected,
+            "url": url,
+            "setup": "cd godseye && cp .env.example .env  # set GOOGLE_MAPS_API_KEY\nnpm install\nnpm run dev -- --host localhost --port 4173",
+            "ambient_sensing": "sensing.ambient remains a separate ZENO stub; Godseye reachability does not implement it.",
+        })
 
     return app
 
