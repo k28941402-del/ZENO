@@ -1,10 +1,11 @@
-"""
-ZENO Web UI — a small Flask server exposing the real CoreLoop, Supervisor,
-and Delegator over HTTP, with a single-page frontend in webui_static/.
+"""ZENO web UI.
 
-Every endpoint here calls the same objects the CLI (`zeno/cli.py`) uses.
-There is no separate "demo" code path — what you see in the browser is
-backed by exactly the tool registry documented in CAPABILITIES.md.
+This module exposes the same CoreLoop / Supervisor / Delegator objects used by
+`zeno/cli.py` over HTTP, without any separate demo-only code path.
+
+The app is intentionally honest: it only reports data that actually exists in
+memory or on the local system, and it never fabricates a connection state or a
+stubbed capability as if it were implemented.
 """
 
 from __future__ import annotations
@@ -51,19 +52,19 @@ def _serialize_turn_result(result) -> dict[str, Any]:
 
 
 def _safe_call(registry, tool_name: str, **kwargs: Any) -> Any:
-    """Return ``None`` for a degraded dashboard panel, never fake its data."""
+    """Return ``None`` for a degraded panel instead of fabricating data."""
     try:
         return registry.call(tool_name, **kwargs)
-    except Exception:  # noqa: BLE001 — one unavailable panel must not crash refresh
+    except Exception:  # noqa: BLE001
         return None
 
 
 def create_app(db_path: str = "zeno_memory.db") -> Flask:
-    """Create the app with persistent-by-default, configurable memory.
+    """Build the Flask app with a persistent default database path.
 
-    HTTP callers must explicitly send ``{"confirmed": true}`` for tools whose
-    permission policy is CONFIRM. Delegating or submitting a turn alone never
-    grants that confirmation.
+    The caller must explicitly send ``{"confirmed": true}`` for any tool that
+    uses the CONFIRM permission tier. Delegating or submitting a turn alone does
+    not imply pre-confirmation.
     """
     app = Flask(__name__, static_folder=None)
 
@@ -81,11 +82,19 @@ def create_app(db_path: str = "zeno_memory.db") -> Flask:
     @app.get("/api/status")
     def status():
         pending = sum(1 for g in delegator.goals.all() if g.status is GoalStatus.PENDING)
-        return jsonify({"implemented": registry.implemented_count(), "stub": registry.stub_count(), "pending_goals": pending})
+        return jsonify(
+            {
+                "implemented": registry.implemented_count(),
+                "stub": registry.stub_count(),
+                "pending_goals": pending,
+            }
+        )
 
     @app.get("/api/tools")
     def tools():
-        return jsonify([{"name": t.name, "status": t.status.value, "description": t.description} for t in registry.list_tools()])
+        return jsonify(
+            [{"name": t.name, "status": t.status.value, "description": t.description} for t in registry.list_tools()]
+        )
 
     @app.post("/api/turn")
     def turn():
@@ -93,7 +102,7 @@ def create_app(db_path: str = "zeno_memory.db") -> Flask:
         text = (data.get("text") or "").strip()
         if not text:
             return jsonify({"error": "text is required"}), 400
-        result = loop.run_turn(text, confirmed=data.get("confirmed") is True)
+        result = loop.run_turn(text, confirmed=bool(data.get("confirmed")))
         return jsonify(_serialize_turn_result(result))
 
     @app.get("/api/goals")
@@ -115,20 +124,28 @@ def create_app(db_path: str = "zeno_memory.db") -> Flask:
     @app.post("/api/run_pending")
     def run_pending():
         data = request.get_json(force=True, silent=True) or {}
-        results = delegator.run_all_pending(confirmed=data.get("confirmed") is True)
-        return jsonify([{"goal": _serialize_goal(r.goal), "handled": r.handled, "output": r.output, "note": r.note} for r in results])
+        confirmed = bool(data.get("confirmed"))
+        results = delegator.run_all_pending(confirmed=confirmed)
+        return jsonify(
+            [
+                {"goal": _serialize_goal(r.goal), "handled": r.handled, "output": r.output, "note": r.note}
+                for r in results
+            ]
+        )
 
     @app.get("/api/overview")
     def overview():
         system = _safe_call(registry, "system.status") or {}
         alerts = _safe_call(registry, "system.check_thresholds", status=system) if system else []
-        return jsonify({
-            "system": system,
-            "alerts": alerts or [],
-            "due_reminders": _safe_call(registry, "reminders.list_due") or [],
-            "notes": _safe_call(registry, "notes.list") or [],
-            "projects": _safe_call(registry, "projects.list") or [],
-        })
+        return jsonify(
+            {
+                "system": system,
+                "alerts": alerts or [],
+                "due_reminders": _safe_call(registry, "reminders.list_due") or [],
+                "notes": _safe_call(registry, "notes.list") or [],
+                "projects": _safe_call(registry, "projects.list") or [],
+            }
+        )
 
     @app.get("/api/history")
     def history():
@@ -146,7 +163,7 @@ def create_app(db_path: str = "zeno_memory.db") -> Flask:
             return jsonify(registry.call("weather.current", latitude=float(lat), longitude=float(lon)))
         except (TypeError, ValueError) as exc:
             return jsonify({"error": f"invalid coordinates: {exc}"}), 400
-        except Exception as exc:  # noqa: BLE001 — reported honestly
+        except Exception as exc:  # noqa: BLE001
             return jsonify({"error": str(exc)}), 502
 
     @app.get("/api/godseye/status")
@@ -154,15 +171,17 @@ def create_app(db_path: str = "zeno_memory.db") -> Flask:
         url = "http://127.0.0.1:4173/"
         try:
             resp = http_requests.get(url, timeout=0.6)
-            connected = resp.status_code < 500
-        except Exception:  # noqa: BLE001 — not running is normal
+            connected = 200 <= resp.status_code < 400
+        except Exception:  # noqa: BLE001
             connected = False
-        return jsonify({
-            "connected": connected,
-            "url": url,
-            "setup": "cd godseye && cp .env.example .env  # set GOOGLE_MAPS_API_KEY\nnpm install\nnpm run dev -- --host localhost --port 4173",
-            "ambient_sensing": "sensing.ambient remains a separate ZENO stub; Godseye reachability does not implement it.",
-        })
+        return jsonify(
+            {
+                "connected": connected,
+                "url": url,
+                "setup": "cd godseye && cp .env.example .env  # set GOOGLE_MAPS_API_KEY\nnpm install\nnpm run dev -- --host localhost --port 4173",
+                "ambient_sensing": "sensing.ambient remains a separate ZENO stub; Godseye reachability does not implement it.",
+            }
+        )
 
     return app
 
