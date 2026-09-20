@@ -76,7 +76,9 @@ def main() -> None:
             print(f"  Queued as goal #{goal.id}. It'll run when you say 'run pending'.")
             continue
         if text.lower() == "run pending":
-            results = delegator.run_all_pending(confirmed=True)
+            # Delegation is not confirmation. The default policy allows the
+            # built-in local tools, while any CONFIRM rule remains pending.
+            results = delegator.run_all_pending()
             if not results:
                 print("  (nothing pending)")
             for r in results:
@@ -84,7 +86,10 @@ def main() -> None:
                 print(f"  #{r.goal.id} [{mark}] {r.goal.description!r} — {r.note}")
             continue
 
-        result = loop.run_turn(text, confirmed=True)
+        # Do not turn ordinary text into an implicit confirmation. A caller
+        # that needs to confirm a specific CONFIRM-tier tool must use an
+        # explicit integration/API path that passes confirmed=True.
+        result = loop.run_turn(text)
         if result.error:
             print(f"  ! {result.error}")
         elif result.planned.tool_name is None:
